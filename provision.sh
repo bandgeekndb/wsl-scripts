@@ -68,9 +68,7 @@ mv composer.phar /usr/local/bin/composer
 sudo su webdev <<'EOF'
 /usr/local/bin/composer global require hirak/prestissimo
 /usr/local/bin/composer global require "laravel/envoy=^2.0"
-/usr/local/bin/composer global require "laravel/installer=^3.0.1"
-/usr/local/bin/composer global require "laravel/lumen-installer=^1.1"
-/usr/local/bin/composer global require "laravel/spark-installer=dev-master"
+/usr/local/bin/composer global require "laravel/installer=^4"
 /usr/local/bin/composer global require "slince/composer-registry-manager=^2.0"
 EOF
 
@@ -217,11 +215,10 @@ sed -i '/^bind-address/s/bind-address.*=.*/bind-address = 0.0.0.0/' /etc/mysql/m
 mysql --user="root" --password="secret" -e "GRANT ALL ON *.* TO root@'0.0.0.0' IDENTIFIED BY 'secret' WITH GRANT OPTION;"
 service mysql restart
 
-mysql --user="root" --password="secret" -e "CREATE USER 'homestead'@'0.0.0.0' IDENTIFIED BY 'secret';"
-mysql --user="root" --password="secret" -e "GRANT ALL ON *.* TO 'homestead'@'0.0.0.0' IDENTIFIED BY 'secret' WITH GRANT OPTION;"
-mysql --user="root" --password="secret" -e "GRANT ALL ON *.* TO 'homestead'@'%' IDENTIFIED BY 'secret' WITH GRANT OPTION;"
+mysql --user="root" --password="secret" -e "CREATE USER 'webdev'@'0.0.0.0' IDENTIFIED BY 'secret';"
+mysql --user="root" --password="secret" -e "GRANT ALL ON *.* TO 'webdev'@'0.0.0.0' IDENTIFIED BY 'secret' WITH GRANT OPTION;"
+mysql --user="root" --password="secret" -e "GRANT ALL ON *.* TO 'webdev'@'%' IDENTIFIED BY 'secret' WITH GRANT OPTION;"
 mysql --user="root" --password="secret" -e "FLUSH PRIVILEGES;"
-mysql --user="root" --password="secret" -e "CREATE DATABASE homestead character set UTF8mb4 collate utf8mb4_bin;"
 
 sudo tee /home/webdev/.my.cnf <<EOL
 [mysqld]
@@ -232,31 +229,6 @@ EOL
 # Add Timezone Support To MySQL
 mysql_tzinfo_to_sql /usr/share/zoneinfo | mysql --user=root --password=secret mysql
 service mysql restart
-
-# Install Postgres in this specific order so version 12 gets port 5432
-#apt-get install -y postgresql-12 postgresql-server-dev-12 postgresql-12-postgis-3 postgresql-12-postgis-3-scripts
-#apt-get install -y postgresql-11 postgresql-server-dev-11 postgresql-11-postgis-3 postgresql-11-postgis-3-scripts
-#apt-get install -y postgresql-10 postgresql-server-dev-10 postgresql-10-postgis-3 postgresql-10-postgis-3-scripts
-#apt-get install -y postgresql-9.6 postgresql-server-dev-9.6 postgresql-9.6-postgis-3 postgresql-9.6-postgis-3-scripts
-
-# Disable Older Versions of Postgres
-#sudo systemctl disable postgresql@9.6-main
-#sudo systemctl disable postgresql@10-main
-#sudo systemctl disable postgresql@11-main
-#sudo systemctl enable postgresql@12-main
-
-# Configure Postgres Remote Access
-#sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/g" /etc/postgresql/9.6/main/postgresql.conf
-#echo "host    all             all             10.0.2.2/32               md5" | tee -a /etc/postgresql/9.6/main/pg_hba.conf
-#sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/g" /etc/postgresql/10/main/postgresql.conf
-#echo "host    all             all             10.0.2.2/32               md5" | tee -a /etc/postgresql/10/main/pg_hba.conf
-#sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/g" /etc/postgresql/11/main/postgresql.conf
-#echo "host    all             all             10.0.2.2/32               md5" | tee -a /etc/postgresql/11/main/pg_hba.conf
-#sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/g" /etc/postgresql/12/main/postgresql.conf
-#echo "host    all             all             10.0.2.2/32               md5" | tee -a /etc/postgresql/12/main/pg_hba.conf
-#sudo -u postgres psql -c "CREATE ROLE homestead LOGIN PASSWORD 'secret' SUPERUSER INHERIT NOCREATEDB NOCREATEROLE NOREPLICATION;"
-#sudo -u postgres /usr/bin/createdb --echo --owner=homestead homestead
-#service postgresql@12-main restart
 
 # Install Redis, Memcached, & Beanstalk
 apt-get install -y redis-server memcached beanstalkd
@@ -325,50 +297,12 @@ chown -R webdev:webdev /usr/local/bin
 # Add Composer Global Bin To Path
 printf "\nPATH=\"$(sudo su - webdev -c 'composer config -g home 2>/dev/null')/vendor/bin:\$PATH\"\n" | tee -a /home/webdev/.profile
 
-# Perform some cleanup from chef/bento packer_templates/ubuntu/scripts/cleanup.sh
-# Delete Linux source
-dpkg --list \
-    | awk '{ print $2 }' \
-    | grep linux-source \
-    | xargs apt-get -y purge;
-
-# delete docs packages
-dpkg --list \
-    | awk '{ print $2 }' \
-    | grep -- '-doc$' \
-    | xargs apt-get -y purge;
-
 # Delete obsolete networking
 apt-get -y purge ppp pppconfig pppoeconf
-
-# Configure chronyd to fix clock-drift when VM-host sleeps/hibernates.
-sed -i "s/^makestep.*/makestep 1 -1/" /etc/chrony/chrony.conf
 
 # Delete oddities
 apt-get -y purge popularity-contest installation-report command-not-found command-not-found-data friendly-recovery \
 fonts-ubuntu-font-family-console laptop-detect
 
-# Exlude the files we don't need w/o uninstalling linux-firmware
-echo "==> Setup dpkg excludes for linux-firmware"
-cat <<_EOF_ | cat >> /etc/dpkg/dpkg.cfg.d/excludes
-#BENTO-BEGIN
-path-exclude=/lib/firmware/*
-path-exclude=/usr/share/doc/linux-firmware/*
-#BENTO-END
-_EOF_
-
-# Delete the massive firmware packages
-rm -rf /lib/firmware/*
-rm -rf /usr/share/doc/linux-firmware/*
-
 apt-get -y autoremove;
 apt-get -y clean;
-
-# Remove docs
-rm -rf /usr/share/doc/*
-
-# Remove caches
-find /var/cache -type f -exec rm -rf {} \;
-
-# delete any logs that have built up during the install
-find /var/log/ -name *.log -exec rm -f {} \;
