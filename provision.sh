@@ -15,7 +15,7 @@ locale-gen en_US.UTF-8
 # Install Some PPAs
 apt-get install -y software-properties-common curl
 
-apt-add-repository ppa:nginx/development -y
+apt-add-repository ppa:nginx/mainline -y
 apt-add-repository ppa:ondrej/php -y
 apt-add-repository ppa:chris-lea/redis-server -y
 
